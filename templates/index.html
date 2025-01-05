@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Генератор логотипов</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 min-h-screen p-8">
+    <div class="max-w-2xl mx-auto bg-white rounded-xl shadow-md p-8">
+        <h1 class="text-2xl font-bold mb-6 text-center">Генератор логотипов</h1>
+
+        <div class="space-y-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-700">Стиль логотипа</label>
+                <input type="text" id="style" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border"
+                       placeholder="Например: Минималистичный, Современный, Классический">
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium text-gray-700">Описание</label>
+                <textarea id="description" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border h-32"
+                         placeholder="Опишите ваш логотип подробно..."></textarea>
+            </div>
+
+            <button onclick="generateLogo()" class="w-full bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600 transition-colors">
+                Сгенерировать
+            </button>
+
+            <div id="result" class="hidden mt-4">
+                <div id="loading" class="text-center">
+                    <p>Генерация логотипа...</p>
+                    <div class="mt-4">
+                        <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto"></div>
+                    </div>
+                </div>
+                <div id="success" class="hidden">
+                    <p class="text-green-600 mb-4 text-center">Логотип успешно создан!</p>
+
+                    <div id="imageContainer" class="mb-4 flex justify-center">
+                        <img id="generatedLogo" src="" alt="Сгенерированный логотип"
+                             class="max-w-full h-auto rounded-lg shadow-lg">
+                    </div>
+
+                    <button id="downloadBtn" class="w-full bg-green-500 text-white px-4 py-2 rounded-md hover:bg-green-600 transition-colors">
+                        Скачать логотип
+                    </button>
+                </div>
+                <div id="error" class="hidden">
+                    <p class="text-red-600 text-center">Произошла ошибка при генерации логотипа</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Добавим логирование для отладки
+        console.log('Script loaded');
+
+        async function generateLogo() {
+            console.log('Generate button clicked');
+
+            const style = document.getElementById('style').value.trim();
+            const description = document.getElementById('description').value.trim();
+
+            console.log('Style:', style);
+            console.log('Description:', description);
+
+            if (!style || !description) {
+                alert('Пожалуйста, заполните все поля');
+                return;
+            }
+
+            // Показываем индикатор загрузки
+            document.getElementById('result').classList.remove('hidden');
+            document.getElementById('loading').classList.remove('hidden');
+            document.getElementById('success').classList.add('hidden');
+            document.getElementById('error').classList.add('hidden');
+
+            try {
+                console.log('Sending request to server...');
+
+                // Отправляем запрос на генерацию
+                const response = await fetch('/generate', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ style, description }),
+                });
+
+                const data = await response.json();
+                console.log('Server response:', data);
+
+                if (response.ok && data.operation_id) {
+                    // Начинаем проверять статус
+                    await checkStatus(data.operation_id);
+                } else {
+                    throw new Error(data.error || 'Произошла ошибка при создании логотипа');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                showError(error.message);
+            }
+        }
+
+        async function checkStatus(operationId) {
+            console.log('Checking status for operation:', operationId);
+
+            try {
+                let attempts = 0;
+                const maxAttempts = 15; // 30 секунд (15 попыток по 2 секунды)
+
+                const checkInterval = setInterval(async () => {
+                    attempts++;
+                    console.log('Status check attempt:', attempts);
+
+                    try {
+                        const response = await fetch(`/check_status/${operationId}`);
+                        const data = await response.json();
+                        console.log('Status response:', data);
+
+                        if (data.status === 'completed') {
+                            clearInterval(checkInterval);
+                            showSuccess(data);
+                        } else if (data.status === 'error') {
+                            clearInterval(checkInterval);
+                            showError(data.error);
+                        } else if (attempts >= maxAttempts) {
+                            clearInterval(checkInterval);
+                            showError('Превышено время ожидания');
+                        }
+                        // Если status === 'processing', продолжаем ждать
+
+                    } catch (error) {
+                        console.error('Error in status check:', error);
+                        clearInterval(checkInterval);
+                        showError(error.message);
+                    }
+                }, 2000); // Проверяем каждые 2 секунды
+
+            } catch (error) {
+                console.error('Error in checkStatus:', error);
+                showError(error.message);
+            }
+        }
+
+        function showSuccess(data) {
+            console.log('Showing success with data:', data);
+            document.getElementById('loading').classList.add('hidden');
+            document.getElementById('success').classList.remove('hidden');
+            document.getElementById('generatedLogo').src = data.image_url;
+            document.getElementById('downloadBtn').onclick = () => {
+                window.location.href = `/download/${data.filename}`;
+            };
+        }
+
+        function showError(message) {
+            console.log('Showing error:', message);
+            document.getElementById('loading').classList.add('hidden');
+            document.getElementById('error').classList.remove('hidden');
+            document.getElementById('error').querySelector('p').textContent = message;
+        }
+    </script>
+</body>
+</html>
